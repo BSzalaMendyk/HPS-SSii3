@@ -1,0 +1,79 @@
+# IDP simulation
+
+###### VARIABLES #######
+variable    t equal 300
+variable    damp equal 1000
+variable    seedV equal 4928421
+variable    seedT equal 3278431
+variable    seedtemper equal 32784
+variable    dt equal 10.0
+variable    thermointrv equal 100000
+variable    dumpintrv equal 1000
+variable    temperintrv equal 1000
+variable    runtime equal 350000000
+
+units       real
+dimension   3
+boundary    p p p
+atom_style  full
+
+bond_style  hybrid  harmonic  special
+
+angle_style bch
+dihedral_style gaussian/lj1210lambda 0.27 -0.5 0.4 # e0 e1 e2 respectively
+
+pair_style  ljlambda 0.1 0.0 35.0
+dielectric  80.0
+
+read_data   in.data
+
+# pairwise coefficients
+generate_pair_coeff   start
+
+#pdbfile p1 TDP-43_FL.pdb
+#molecule    m1 pdb p1  bead 1 id 267:414 copy 1
+molecule m1 protein bead 1 seq GESGERWARQVSGGHFVTLHGAERLEEETNDEDVSDIERRIAMRLAERRQEDSATHGDE copy 1 collapse
+charge    1 type HIS 0.0 ARG:LYS 1.0 ASP:GLU -1.0
+contact     c1 file HPS_Urry.dat scale 1.0 offset 0.08
+contact     r1 file aminoacids_vdwdiameter.dat 
+contactmodify c2 c1 * * 0.2
+
+contactmodify c3 c1 * * -5.00
+contactmodify c3 c1 file lambd14_1001_11.txt
+contactmodify c4 c1 file epsilon_1001_11_mod.txt #epsilon values
+contactmodify r2 r1 * * 5.085
+
+rngseed     1234567
+box         box 1000 1000 1000
+
+paircoeff   1 mol * * ljlambda c2 r1 c1
+bondcoeff   1 mol * harmonic 10.0 3.8 #using the harmonic bond parameters as in Urry 
+bondcoeff  b2 mol * special 0.0  0.0 skip 4
+anglecoeff  1 mol * bch
+dihedralcoeff 1 mol * ljlambda14/dihedeps c2 r2 c3 c4 arithmetic weight 1 0 0 1 weight-dihedeps 1 0 0 1 1- -1
+generate_pair_coeff   end
+
+special_bonds lj/coul 0.0 0.0 0.0 angle yes dihedral yes
+
+neighbor    3.5 multi
+neigh_modify  every 10 delay 0
+
+### Energy minimization
+minimize    1.0e-4 1.0e-6 1000 100000
+
+### production
+timestep    ${dt}
+reset_timestep 0
+
+velocity    all create $t ${seedV}
+fix         1 all langevin $t $t ${damp} ${seedT}
+fix         2 all nve
+
+thermo     ${thermointrv}
+thermo_style custom step evdwl ecoul ebond eangle edihed temp
+
+dump       VMD1 all xtc ${dumpintrv} traj_lambdNtail.xtc
+
+run     ${runtime}
+
+write_restart restart.bin_protein
